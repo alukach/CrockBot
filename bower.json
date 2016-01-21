@@ -1,0 +1,25 @@
+{
+  "name": "sousvide.js",
+  "description": "\"I've always wanted a WiFi enabled crockpot\"",
+  "main": "public/index.html",
+  "authors": [
+    "Anthony Lukach <anthonylukach@gmail.com>"
+  ],
+  "license": "ISC",
+  "moduleType": [],
+  "homepage": "",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "jquery": "~2.2.0",
+    "bootstrap": "~3.3.6",
+    "dygraphs": "~1.1.1",
+    "foundation-sites": "~6.1.1"
+  }
+}

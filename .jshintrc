@@ -1,0 +1,3 @@
+{
+  "asi"           : true  // Allow automatic-semicolon-insertion
+}
