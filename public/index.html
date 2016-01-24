@@ -37,6 +37,9 @@
       form#power-state input[type="radio"] {
         margin: 4px 5px 0;
       }
+      .label.connection {
+        padding: .2em 0.4em 0.3em;
+      }
 
     </style>
 
@@ -76,8 +79,8 @@
 
       <div class="row marketing">
         <div class="col-lg-6">
-          <h4>Subheading</h4>
-          <p>Donec id elit non mi porta gravida at eget metus. Maecenas faucibus mollis interdum.</p>
+          <h4>Power</h4>
+          <p id="duty"></p>
 
           <h4>Subheading</h4>
           <p>Morbi leo risus, porta ac consectetur ac, vestibulum at eros. Cras mattis consectetur purus sit amet fermentum.</p>
@@ -117,7 +120,7 @@
 
     // Handle server events
     primus.on("open", function () {
-      $('#cnxn').html('Connected ' + '<span class="label label-success label-as-badge"><span class="glyphicon glyphicon-ok success" aria-hidden="true"></span>');
+      $('#cnxn').html('Connected ' + '<span class="label label-success label-as-badge connection"><span class="glyphicon glyphicon-ok success" aria-hidden="true"></span>');
     });
     primus.on("close", function () {
       $('#cnxn').html('Disconnected');
@@ -132,13 +135,22 @@
         {
           ylabel: 'Temperature (C)',
           labels: ['Time', 'Temperature (C)'],
+          rollPeriod: 2,
           // labels: ['Time', 'Temperature (C)', 'Power'],
         }
       );
       g.updateOptions( { 'file': data } );
     });
     primus.on("power", function (state) {
-      $('input[name=power_state][value="' + state + '"]').prop('checked',true)
+      $('input[name=power_state][value="' + state + '"]').prop('checked',true);
+    });
+    primus.on("duty", function (val) {
+      $('#duty').html(val);
+    });
+
+    primus.on("msg-log", function () {
+      var args = Array.prototype.slice.call(arguments);  // turn args into array
+      console.log.apply(console, args);
     });
 
     // Send dom events to server
