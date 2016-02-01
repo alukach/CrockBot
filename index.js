@@ -4,9 +4,10 @@ var express = require("express")
 var gpio = require("gpio");
 var http = require("http")
 var Primus = require("primus")
-var Controller = require('node-pid-controller');
+var PIDController = require('node-pid-controller');
 
 var BroadcastLogs = require('./lib/broadcast-logs')
+var Controller = require('./lib/control-system')
 
 // Global Variables
 var port = process.env.PORT || 3000
@@ -85,16 +86,20 @@ primus.on('connection', function (spark) {
   spark.on('runControl', function runControl (state, target_temp) {
     if (parseInt(state)) {
       current_target_temp = parseInt(target_temp)
-      var ctrlr = new Controller({
+      var pid_ctrlr = new PIDController({
         k_p: 1,
         k_i: 1,
         k_d: 1,
       })
-      ctrlr.setTarget(target_temp)
+      pid_ctrlr.setTarget(target_temp)
 
-      // Warm up to within 5 deg, then run control system
-      var cycle_length = 5
-      controlId.val = startControl(last_temp, target_temp, 5, ctrlr, cycle_length, power_ctrl)
+      var ctrlr = new Controller({
+        goal_temp: current_target_temp,
+        pid_ctrlr: pid_ctrlr,
+        power_ctrl: power_ctrl,
+        socket_server: primus
+      })
+      ctrlr.start()
     } else {
       clearTimeout(controlId.val)
       controlId.val = 0
@@ -113,67 +118,3 @@ Object.observe(controlId, function (changes) {
     spark.emit("runControl", controlId.running)
   })
 })
-
-// Run control system
-function startControl (last_temp, goal_temp, temp_window, ctrlr, cycle_length, power_ctrl) {
-  // Warm machine up to within 5 degrees, then run callback (entering
-  // control system).
-  if (!last_temp) {
-    console.log("No known temp, trying again in 1 sec")
-    controlId.val = setTimeout(startControl.bind(null, last_temp, goal_temp, temp_window, ctrlr, cycle_length, power_ctrl), 1000)
-    return controlId.val
-  }
-
-  var temp_offset = goal_temp - last_temp
-
-  if (Math.abs(temp_offset) < temp_window) {
-    console.log("Within temp, starting...")
-    return runCtrl(ctrlr, cycle_length, new Date())
-
-  } else {
-
-    if (temp_offset > 0) {
-      console.log("Under temp, currently at", last_temp, "need to rise by", temp_offset.toFixed(1), "degrees.")
-      power_ctrl.set(1)
-
-    } else {
-      console.log("Over temp, currently at", last_temp, "need to lower by", Math.abs(temp_offset).toFixed(1), "degrees.")
-      power_ctrl.set(0)
-    }
-
-    controlId.val = setTimeout(startControl.bind(null, last_temp, goal_temp, temp_window, ctrlr, cycle_length, power_ctrl), 30000)
-    return controlId.val
-  }
-}
-
-function runCtrl (ctrlr, cycle_length, last_temp, start) {
-  start = start || new Date()  // Set start time if unset
-  if (((new Date() - start) / 1000) < (60 * 60 * 3) ) {  // Run for 3 hr
-    duty_cycle = ctrlr.update(last_temp)
-    // Send data to each cnxn
-    primus.forEach(function (spark) {
-      spark.emit('duty', duty_cycle, new Date(), power_state);
-    })
-
-    console.log('duty_cycle', duty_cycle)
-    var callback = runCtrl.bind(null, ctrlr, cycle_length, start)
-    controlId.val = setTimeout(runCycle.bind(null, duty_cycle, 0, cycle_length, callback), 1000)
-    return controlId.val
-  }
-  else {
-    console.log("Trial ended.")
-  }
-}
-
-function runCycle (duty, cycle_num, cycle_length, callback) {
-  if (cycle_num < cycle_length) {
-    // Control power for cycle
-    var rel_duty = (duty/100) * cycle_length
-    power_ctrl.set((rel_duty > cycle_num) ? 1 : 0)
-    controlId.val = setTimeout(runCycle.bind(null, duty, cycle_num + 1, cycle_length, callback), 1000)
-    return controlId.val
-  } else {
-    // End of cycle
-    return callback()
-  }
-}
