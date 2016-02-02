@@ -16,8 +16,8 @@ var temp_poll_interval = process.env.POLL_INTERVAL || 1000
 var last_temp
 var power_state = 0
 var controlId = {val: 0, running: false}
-var current_target_temp
-
+var target_temp
+var ctrlr
 
 // Setup temperature sensor
 function getTemp (sensor_id) {
@@ -25,6 +25,9 @@ function getTemp (sensor_id) {
     // No need to transmit redundant data
     if (temp == last_temp) {
       return
+    }
+    if (ctrlr) {
+      ctrlr.last_temp = temp
     }
     // Send data to each cnxn
     primus.forEach(function (spark) {
@@ -75,7 +78,7 @@ primus.on('connection', function (spark) {
   // Send initial state
   spark.emit('power', power_ctrl._get())
   spark.emit('temp', last_temp, new Date(), power_state)
-  spark.emit('runControl', controlId.running, current_target_temp)
+  spark.emit('runControl', controlId.running, target_temp)
 
   // Handle manual power override signal
   spark.on('power', function power (val) {
@@ -85,7 +88,7 @@ primus.on('connection', function (spark) {
   // Handle manual power override signal
   spark.on('runControl', function runControl (state, target_temp) {
     if (parseInt(state)) {
-      current_target_temp = parseInt(target_temp)
+      target_temp = parseInt(target_temp)
       var pid_ctrlr = new PIDController({
         k_p: 1,
         k_i: 1,
@@ -93,11 +96,12 @@ primus.on('connection', function (spark) {
       })
       pid_ctrlr.setTarget(target_temp)
 
-      var ctrlr = new Controller({
-        goal_temp: current_target_temp,
+      ctrlr = new Controller({
+        goal_temp: target_temp,
         pid_ctrlr: pid_ctrlr,
         power_ctrl: power_ctrl,
-        socket_server: primus
+        socket_server: primus,
+        last_temp: last_temp
       })
       ctrlr.start()
     } else {
