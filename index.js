@@ -1,3 +1,4 @@
+console.log("Starting...")
 var compression = require('compression')
 var ds18x20 = require('ds18x20')
 var express = require("express")
@@ -17,7 +18,10 @@ var last_temp
 var power_state = 0
 var controlId = {val: 0, running: false}
 var target_temp
-var ctrlr
+var ctrlr, pid_ctrlr
+var k_p = 10
+var k_i = 300
+var k_d = 30
 
 // Setup temperature sensor
 function getTemp (sensor_id) {
@@ -90,12 +94,11 @@ primus.on('connection', function (spark) {
     if (parseInt(state)) {
       target_temp = parseInt(target_temp)
       var pid_ctrlr = new PIDController({
-        k_p: 1,
-        k_i: 1,
-        k_d: 1,
+        k_p: k_p,
+        k_i: k_i,
+        k_d: k_d,
       })
       pid_ctrlr.setTarget(target_temp)
-
       ctrlr = new Controller({
         goal_temp: target_temp,
         pid_ctrlr: pid_ctrlr,
@@ -122,3 +125,5 @@ Object.observe(controlId, function (changes) {
     spark.emit("runControl", controlId.running)
   })
 })
+
+console.log("Ready to Crock!")
