@@ -82,36 +82,41 @@
       </div>
 
       <div class="row marketing">
-        <div class="col-lg-12">
+        <div class="col-lg-6">
           <div class="input-group input-group-lg">
             <legend>Set Temperature</legend>
             <input type="text" class="input-lg" id="set-temp" placeholder="Target Temp (&deg;C)">
             <button type="submit" class="btn btn-default btn-lg" id="ctrl-cycle-toggle" value="1">Start</button>
           </div>
         </div>
-      </div>
 
-      <div class="row marketing">
-        <div class="col-lg-6">
-          <h4>Power</h4>
-          <p id="duty"></p>
-
-          <h4>Subheading</h4>
-          <p>Morbi leo risus, porta ac consectetur ac, vestibulum at eros. Cras mattis consectetur purus sit amet fermentum.</p>
-
-          <h4>Subheading</h4>
-          <p>Maecenas sed diam eget risus varius blandit sit amet non magna.</p>
-        </div>
-
-        <div class="col-lg-6">
-          <h4>Subheading</h4>
-          <p>Donec id elit non mi porta gravida at eget metus. Maecenas faucibus mollis interdum.</p>
-
-          <h4>Subheading</h4>
-          <p>Morbi leo risus, porta ac consectetur ac, vestibulum at eros. Cras mattis consectetur purus sit amet fermentum.</p>
-
-          <h4>Subheading</h4>
-          <p>Maecenas sed diam eget risus varius blandit sit amet non magna.</p>
+        <div id= "runControl" class="col-lg-6 hidden">
+          <div class="table-responsive">
+            <table class="table table-condensed">
+              <tbody>
+                <tr>
+                  <th>Status</th>
+                  <td id="status">---</td>
+                </tr>
+                <tr>
+                  <th>Power</th>
+                  <td id="duty">---</td>
+                </tr>
+                <tr>
+                  <th>P</th>
+                  <td id="k_p">---</td>
+                </tr>
+                <tr>
+                  <th>I</th>
+                  <td id="k_i">---</td>
+                </tr>
+                <tr>
+                  <th>D</th>
+                  <td id="k_d">---</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -135,13 +140,15 @@
     // Run state
     var running = false;
 
-    // Handle server events
+    // Handle connection events
     primus.on("open", function () {
       $('#cnxn').html('Connected ' + '<span class="label label-success label-as-badge connection"><span class="glyphicon glyphicon-ok success" aria-hidden="true"></span>');
     });
     primus.on("close", function () {
       $('#cnxn').html('Disconnected');
     });
+
+    // Handle temperature update
     primus.on("temp", function (temp, date, state) {
       $('#temp').html(temp + "&deg;C");
 
@@ -158,62 +165,82 @@
       );
       g.updateOptions( { 'file': data } );
     });
-    primus.on("runControl", function (state, temp) {
-      if (state == running) {
-        return
-      } else {
-        running = state;
-      }
+
+    // Sync controller state form and pid controller
+    primus.on("ctrlr_state", function (state) {
+      // Read state from server
+
+      console.log('ctrlr_state', state);
+      running = Boolean(state);
+
+      // Controller running
       if (running) {
-        $('input#set-temp').val(temp).prop('disabled', true);
+        // Update button
         $('button#ctrl-cycle-toggle')
-          .text("Running")
+          .text(state.status)
           .addClass('btn-success')
           .removeClass('btn-default')
           .removeClass('btn-danger')
           .hover(
             function(){ $(this).addClass('btn-danger').removeClass('btn-success').text("Stop") },
-            function(){ $(this).addClass('btn-success').removeClass('btn-danger').text("Running") }
-          ).val(0)
+            function(){ $(this).addClass('btn-success').removeClass('btn-danger').text(state.status) }
+          ).val(0);
+
+        // Set target-temp input value
+        $('input#set-temp').val(state.target_temp).prop('disabled', true);
+
+        // Show and populate controller data table
+        $('div#runControl').removeClass('hidden');
+        $('#status').html(state.status);
+        $('#duty').html(state.duty);
+        $('#k_p').html(state.k_p);
+        $('#k_i').html(state.k_i);
+        $('#k_d').html(state.k_d);
+
+      // Controller not running
       } else {
-        $('input#set-temp').val(null).prop('disabled', false);
+        // Update button
         $('button#ctrl-cycle-toggle')
           .text("Start")
           .addClass('btn-default')
           .removeClass('btn-success')
           .removeClass('btn-danger')
           .hover(
-            function(){ $(this).addClass('btn-success').text("Start") },
+            function(){ $(this).addClass('btn-success').removeClass('btn-danger').text("Start") },
             function(){ $(this).removeClass('btn-success').text("Start") }
-          ).val(1)
+          ).val(1);
+
+        // Clear and enable target-temp input field
+        $('input#set-temp').val(null).prop('disabled', false);
+
+        // Hide controller data table
+        $('div#runControl').addClass('hidden');
       }
     });
-    // Send CycleControl change to server
     $('button#ctrl-cycle-toggle').click(
+      // Push state to server
       function (){
-        primus.emit("runControl", parseInt(this.value), parseInt($('#set-temp').val()));
+        var state = parseInt(this.value) ? {
+          target_temp: parseInt($('#set-temp').val()),
+        } : false
+        primus.emit("ctrlr_state", state);
       }
     );
 
-
-    // Display run details
+    // Sync power state radio buttons and power controller
     primus.on("power", function (state) {
+      // Read state from server
       $('input[name=power_state][value="' + state + '"]').prop('checked',true);
     });
-    primus.on("duty", function (val) {
-      $('#duty').html(val);
+    $('input[name=power_state]').change(function () {
+      // Push state to server
+      primus.emit('power', this.value);
     });
-
 
     // Log incoming messages
     primus.on("msg-log", function () {
       var args = Array.prototype.slice.call(arguments);  // turn args into array
       console.log.apply(console, args);
-    });
-
-    // Send dom events to server
-    $('input[name=power_state]').change(function () {
-      primus.emit('power', this.value);
     });
     </script>
   </body>
